@@ -15,6 +15,7 @@ const fieldIds = [
   "materialStatus",
   "safetyStatus",
   "plannedPeriod",
+  "totalProgress",
   "phaseGoal",
   "phasePlanEnd",
   "scheduleCompare",
@@ -582,17 +583,23 @@ function buildReportText() {
     `安全文明：${fallback(valueOf("safetyStatus"), "正常")}`
   );
 
-  lines.push("", sep, "", "02｜工期计划与执行判断", "");
+  lines.push("", sep, "", "02｜工期计划与三层进度", "");
   lines.push(
+    "总工期：",
     `总工期计划：${fallback(valueOf("plannedPeriod"), "__________")}`,
+    `总工期完成比例：${progressLabel(progressValue("totalProgress"))}`,
+    `整体执行判断：${fallback(valueOf("scheduleCompare"), "按计划执行")}`,
+    "",
+    "当前阶段：",
     `当前大阶段：${stage}`,
-    `本阶段目标：${fallback(valueOf("phaseGoal"), "__________")}`,
-    `本阶段计划完成时间：${fallback(valueOf("phasePlanEnd"), "__________")}`,
-    `工期执行判断：${fallback(valueOf("scheduleCompare"), "按计划执行")}`,
-    `本阶段完成比例：${progressLabel(progressValue("phaseProgress"))}`,
+    `阶段目标：${fallback(valueOf("phaseGoal"), "__________")}`,
+    `阶段计划完成时间：${fallback(valueOf("phasePlanEnd"), "__________")}`,
+    `阶段完成比例：${progressLabel(progressValue("phaseProgress"))}`,
+    "",
+    "本周计划：",
     `本周计划完成比例：${progressLabel(progressValue("weeklyProgress"))}`,
     "",
-    "本周总体目标：",
+    "本周目标：",
     fallback(valueOf("weeklyFocus"), "__________")
   );
 
@@ -609,7 +616,7 @@ function buildReportText() {
     });
   }
 
-  lines.push("", "工期说明：");
+  lines.push("", "进度说明：");
   lines.push(fallback(valueOf("scheduleNote"), "__________"));
 
   lines.push("", sep, "", "03｜今日完成内容", "");
@@ -714,6 +721,7 @@ function getReportData(photoItems = previewPhotoItems()) {
   syncPeopleFromOverview();
   const peopleCount = currentPeopleCount();
   const status = fallback(valueOf("status"), "正常推进");
+  const totalProgress = progressValue("totalProgress");
   const phaseProgress = progressValue("phaseProgress");
   const weeklyProgress = progressValue("weeklyProgress");
 
@@ -728,15 +736,17 @@ function getReportData(photoItems = previewPhotoItems()) {
     stage: fallback(valueOf("stage"), "当前阶段待填写"),
     status,
     plannedPeriod: fallback(valueOf("plannedPeriod"), "总工期计划待填写"),
-    phaseGoal: fallback(valueOf("phaseGoal"), "本阶段目标待填写"),
-    phasePlanEnd: fallback(valueOf("phasePlanEnd"), "计划完成时间待填写"),
+    totalProgress,
+    totalProgressLabel: progressLabel(totalProgress),
+    phaseGoal: fallback(valueOf("phaseGoal"), "阶段目标待填写"),
+    phasePlanEnd: fallback(valueOf("phasePlanEnd"), "阶段计划完成时间待填写"),
     scheduleCompare: fallback(valueOf("scheduleCompare"), "按计划执行"),
     phaseProgress,
     phaseProgressLabel: progressLabel(phaseProgress),
     weeklyProgress,
     weeklyProgressLabel: progressLabel(weeklyProgress),
-    weeklyFocus: fallback(valueOf("weeklyFocus"), "本周总体目标待补充。"),
-    scheduleNote: fallback(valueOf("scheduleNote"), "工期说明待补充。"),
+    weeklyFocus: fallback(valueOf("weeklyFocus"), "本周目标待补充。"),
+    scheduleNote: fallback(valueOf("scheduleNote"), "进度说明待补充。"),
     overviewPeople: nonEmptyOverviewPeopleRows(),
     workfaceStatus: fallback(valueOf("workfaceStatus"), "正常展开"),
     materialStatus: fallback(valueOf("materialStatus"), "材料到位"),
@@ -849,7 +859,14 @@ function buildDocumentMarkup(photoItems) {
     <div class="doc-progress-list">
       <div class="${attentionClass("doc-progress", scheduleLevel)}">
         <div class="doc-progress-head">
-          <span>本阶段完成比例</span>
+          <span>总工期完成比例</span>
+          <strong>${escapeHtml(data.totalProgressLabel)}</strong>
+        </div>
+        <div class="doc-progress-track"><div class="${attentionClass("doc-progress-fill", scheduleLevel)}" style="width: ${data.totalProgress ?? 0}%"></div></div>
+      </div>
+      <div class="${attentionClass("doc-progress", scheduleLevel)}">
+        <div class="doc-progress-head">
+          <span>当前阶段完成比例</span>
           <strong>${escapeHtml(data.phaseProgressLabel)}</strong>
         </div>
         <div class="doc-progress-track"><div class="${attentionClass("doc-progress-fill", scheduleLevel)}" style="width: ${data.phaseProgress ?? 0}%"></div></div>
@@ -989,23 +1006,24 @@ function buildDocumentMarkup(photoItems) {
 
       <section class="${attentionClass("doc-section soft", scheduleLevel)}">
         <div class="doc-section-head">
-          <h4>工期计划与执行判断</h4>
+          <h4>工期计划与三层进度</h4>
           <span class="doc-section-kicker">02</span>
         </div>
         <div class="doc-work-grid">
           <div class="doc-mini"><span class="doc-mini-label">总工期计划</span><strong>${escapeHtml(data.plannedPeriod)}</strong></div>
-          <div class="doc-mini"><span class="doc-mini-label">本阶段目标</span><strong>${escapeHtml(data.phaseGoal)}</strong></div>
-          <div class="doc-mini"><span class="doc-mini-label">计划完成时间</span><strong>${escapeHtml(data.phasePlanEnd)}</strong></div>
+          <div class="doc-mini"><span class="doc-mini-label">当前阶段</span><strong>${escapeHtml(data.stage)}</strong></div>
+          <div class="doc-mini"><span class="doc-mini-label">阶段目标</span><strong>${escapeHtml(data.phaseGoal)}</strong></div>
+          <div class="doc-mini"><span class="doc-mini-label">阶段计划完成时间</span><strong>${escapeHtml(data.phasePlanEnd)}</strong></div>
           <div class="${attentionClass("doc-mini", scheduleLevel)}"><span class="doc-mini-label">执行判断</span><strong>${escapeHtml(data.scheduleCompare)}</strong></div>
         </div>
         ${progressHtml}
         <div class="doc-alert ok">
-          <strong>本周总体目标</strong>
+          <strong>本周目标</strong>
           <span>${escapeHtml(data.weeklyFocus)}</span>
         </div>
         ${weeklyHtml}
         <div class="doc-alert ok">
-          <strong>工期说明</strong>
+          <strong>进度说明</strong>
           <span>${escapeHtml(data.scheduleNote)}</span>
         </div>
       </section>
@@ -1143,7 +1161,9 @@ function updateQuality() {
   if (!valueOf("people")) missing.push("现场人数");
   if (!valueOf("stage")) missing.push("当前阶段");
   if (!nonEmptyOverviewPeopleRows().length) missing.push("人员配置");
-  if (!valueOf("phaseGoal")) missing.push("本阶段目标");
+  if (!valueOf("plannedPeriod")) missing.push("总工期计划");
+  if (progressValue("totalProgress") === null) missing.push("总工期进度");
+  if (!valueOf("phaseGoal")) missing.push("阶段目标");
   if (!valueOf("phasePlanEnd")) missing.push("阶段计划时间");
   if (progressValue("phaseProgress") === null) missing.push("阶段进度");
   if (progressValue("weeklyProgress") === null) missing.push("本周进度");
@@ -1819,17 +1839,19 @@ function drawCanvasReport(data, photoImages) {
 
   y += 18;
   const scheduleLevel = scheduleAttentionLevel(data);
-  y = drawSectionTitle(state, y, 2, "工期计划与执行判断");
+  y = drawSectionTitle(state, y, 2, "工期计划与三层进度");
   y = drawMiniGrid(state, y, [
     { label: "总工期计划", value: data.plannedPeriod },
-    { label: "本阶段目标", value: data.phaseGoal },
-    { label: "计划完成时间", value: data.phasePlanEnd },
+    { label: "当前阶段", value: data.stage },
+    { label: "阶段目标", value: data.phaseGoal },
+    { label: "阶段计划完成时间", value: data.phasePlanEnd },
     { label: "执行判断", value: data.scheduleCompare, level: scheduleLevel },
   ]) + 8;
-  y = drawProgressCard(state, y, "本阶段完成比例", data.phaseProgress, scheduleLevel);
+  y = drawProgressCard(state, y, "总工期完成比例", data.totalProgress, scheduleLevel);
+  y = drawProgressCard(state, y, "当前阶段完成比例", data.phaseProgress, scheduleLevel);
   y = drawProgressCard(state, y, "本周计划完成比例", data.weeklyProgress, scheduleLevel, "weekly");
-  y = drawParagraphCard(state, y, "本周总体目标", data.weeklyFocus, scheduleLevel);
-  y = drawParagraphCard(state, y, "工期说明", data.scheduleNote, scheduleLevel);
+  y = drawParagraphCard(state, y, "本周目标", data.weeklyFocus, scheduleLevel);
+  y = drawParagraphCard(state, y, "进度说明", data.scheduleNote, scheduleLevel);
   if (data.weeklyTasks.length) {
     data.weeklyTasks.forEach((item, index) => {
       const level = textAttentionLevel([item.status, item.note]);
@@ -2162,6 +2184,7 @@ function loadSample() {
     materialStatus: "材料到位",
     safetyStatus: "正常",
     plannedPeriod: "2026年4月20日-2026年6月30日",
+    totalProgress: "16",
     phaseGoal: "完成机电隐蔽工程施工",
     phasePlanEnd: "5月20日",
     scheduleCompare: "按计划执行",

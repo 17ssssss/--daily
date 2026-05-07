@@ -111,48 +111,68 @@
               <div class="section-title with-action">
                 <div>
                   <span>03</span>
-                  <h2>工期计划与执行</h2>
+                  <h2>工期计划与三层进度</h2>
                 </div>
                 <button class="small-button" type="button" id="addWeeklyBtn">增加周计划</button>
               </div>
-              <div class="field-grid">
-                <label>
-                  总工期计划
-                  <input id="plannedPeriod" type="text" placeholder="2026年4月20日-2026年6月30日" />
-                </label>
-                <label>
-                  本阶段目标
-                  <input id="phaseGoal" type="text" placeholder="完成机电隐蔽工程施工" />
-                </label>
-                <label>
-                  本阶段计划完成时间
-                  <input id="phasePlanEnd" type="text" placeholder="5月20日" />
-                </label>
-                <label>
-                  工期执行判断
-                  <select id="scheduleCompare">
-                    <option>按计划执行</option>
-                    <option>略有提前</option>
-                    <option>轻微滞后</option>
-                    <option>需重点关注</option>
-                  </select>
-                </label>
-                <label>
-                  本阶段完成比例（%）
-                  <input id="phaseProgress" type="number" min="0" max="100" step="1" placeholder="40" />
-                </label>
-                <label>
-                  本周计划完成比例（%）
-                  <input id="weeklyProgress" type="number" min="0" max="100" step="1" placeholder="45" />
-                </label>
+
+              <div class="schedule-group">
+                <h3>总工期</h3>
+                <div class="field-grid">
+                  <label>
+                    总工期计划
+                    <input id="plannedPeriod" type="text" placeholder="2026年4月20日-2026年6月30日" />
+                  </label>
+                  <label>
+                    总工期完成比例（%）
+                    <input id="totalProgress" type="number" min="0" max="100" step="1" placeholder="16" />
+                  </label>
+                  <label>
+                    整体执行判断
+                    <select id="scheduleCompare">
+                      <option>按计划执行</option>
+                      <option>略有提前</option>
+                      <option>轻微滞后</option>
+                      <option>需重点关注</option>
+                    </select>
+                  </label>
+                </div>
               </div>
-              <label class="stacked-field">
-                本周总体目标
-                <textarea id="weeklyFocus" rows="3" placeholder="本周重点完成1层桥架及支座施工，同步推进2层新风管施工，为机电隐蔽验收做准备。"></textarea>
-              </label>
+
+              <div class="schedule-group">
+                <h3>当前阶段</h3>
+                <div class="field-grid">
+                  <label>
+                    阶段目标
+                    <input id="phaseGoal" type="text" placeholder="完成机电隐蔽工程施工" />
+                  </label>
+                  <label>
+                    阶段计划完成时间
+                    <input id="phasePlanEnd" type="text" placeholder="5月20日" />
+                  </label>
+                  <label>
+                    阶段完成比例（%）
+                    <input id="phaseProgress" type="number" min="0" max="100" step="1" placeholder="40" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="schedule-group">
+                <h3>本周计划</h3>
+                <div class="field-grid two">
+                  <label>
+                    本周计划完成比例（%）
+                    <input id="weeklyProgress" type="number" min="0" max="100" step="1" placeholder="45" />
+                  </label>
+                  <label>
+                    本周目标
+                    <textarea id="weeklyFocus" rows="2" placeholder="本周重点完成1层桥架及支座施工，同步推进2层新风管施工，为机电隐蔽验收做准备。"></textarea>
+                  </label>
+                </div>
+              </div>
               <div class="item-list" id="weeklyPlanList"></div>
               <label class="stacked-field">
-                工期说明
+                进度说明
                 <textarea id="scheduleNote" rows="3" placeholder="当前施工内容与本阶段计划匹配，五一期间施工限制已纳入排期调整。"></textarea>
               </label>
             </section>
