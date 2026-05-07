@@ -1,6 +1,32 @@
 const STORAGE_KEY = "yuanbenDailyReportDraft.v1";
 const MAX_PHOTOS = 9;
 const DEFAULT_COMPANY = "新熙华";
+const OVERVIEW_CATEGORIES = [
+  {
+    key: "decoration",
+    title: "精装",
+    addLabel: "增加精装班组",
+    emptyText: "精装班组待补充。",
+    rolePlaceholder: "木工班组",
+    areaPlaceholder: "1层吊顶基层施工",
+  },
+  {
+    key: "subcontract",
+    title: "专业分包",
+    addLabel: "增加专业分包",
+    emptyText: "专业分包待补充。",
+    rolePlaceholder: "新风施工班组",
+    areaPlaceholder: "2层新风管施工",
+  },
+];
+const SUBCONTRACT_PROGRESS_OPTIONS = [
+  "按计划推进",
+  "进行中",
+  "已完成",
+  "待进场",
+  "轻微滞后",
+  "需重点关注",
+];
 
 const fieldIds = [
   "companyName",
@@ -17,8 +43,10 @@ const fieldIds = [
   "plannedPeriod",
   "totalProgress",
   "phaseGoal",
-  "phasePlanEnd",
+  "phasePlanPeriod",
   "scheduleCompare",
+  "delayReason",
+  "delaySolution",
   "phaseProgress",
   "weeklyProgress",
   "weeklyFocus",
@@ -115,12 +143,14 @@ function blankCompletion() {
   };
 }
 
-function blankOverviewPerson() {
+function blankOverviewPerson(category = "decoration") {
   return {
     id: createId(),
+    category,
     role: "",
     people: "",
     area: "",
+    progress: "",
   };
 }
 
@@ -208,6 +238,10 @@ function progressLabel(value) {
   return value === null ? "待填写" : `${value}%`;
 }
 
+function isPhaseDelayed(value = valueOf("scheduleCompare")) {
+  return /滞后|需重点关注/.test(clean(value));
+}
+
 function nonEmptyCompletionRows() {
   return completions.filter((item) =>
     [item.title, item.area, item.progress, item.note].some(clean)
@@ -225,7 +259,22 @@ function nonEmptyWeeklyRows() {
 }
 
 function nonEmptyOverviewPeopleRows() {
-  return overviewPeople.filter((item) => [item.role, item.people, item.area].some(clean));
+  return overviewPeople.filter((item) => [item.role, item.people, item.area, item.progress].some(clean));
+}
+
+function normalizeOverviewPerson(item, fallbackCategory = "decoration") {
+  const category = OVERVIEW_CATEGORIES.some((entry) => entry.key === item?.category)
+    ? item.category
+    : fallbackCategory;
+  return { ...blankOverviewPerson(category), ...item, category, id: createId() };
+}
+
+function overviewRowsByCategory(category) {
+  return nonEmptyOverviewPeopleRows().filter((item) => item.category === category);
+}
+
+function categoryTitle(category) {
+  return OVERVIEW_CATEGORIES.find((entry) => entry.key === category)?.title || "现场人员";
 }
 
 function overviewPeopleTotal() {
@@ -289,6 +338,14 @@ function applyDraft(draft) {
     setValue(id, draft?.fields?.[id] || "");
   });
 
+  if (!valueOf("phasePlanPeriod")) {
+    const phaseStart = clean(draft?.fields?.phasePlanStart);
+    const phaseEnd = clean(draft?.fields?.phasePlanEnd);
+    if (phaseStart || phaseEnd) {
+      setValue("phasePlanPeriod", [phaseStart, phaseEnd].filter(Boolean).join("-"));
+    }
+  }
+
   if (!valueOf("companyName")) {
     setValue("companyName", DEFAULT_COMPANY);
   }
@@ -323,8 +380,8 @@ function applyDraft(draft) {
   includeRiskSection = draft?.includeRiskSection !== false;
 
   overviewPeople = Array.isArray(draft?.overviewPeople) && draft.overviewPeople.length
-    ? draft.overviewPeople.map((item) => ({ ...blankOverviewPerson(), ...item, id: createId() }))
-    : [blankOverviewPerson(), blankOverviewPerson()];
+    ? draft.overviewPeople.map((item) => normalizeOverviewPerson(item))
+    : [blankOverviewPerson("decoration"), blankOverviewPerson("subcontract")];
   syncPeopleFromOverview();
 
   completions = Array.isArray(draft?.completions) && draft.completions.length
@@ -383,30 +440,60 @@ function renderCompletionList() {
 }
 
 function renderOverviewPeopleList() {
-  overviewPeopleList.innerHTML = overviewPeople
-    .map((item, index) => {
-      return `
-        <article class="work-item" data-id="${item.id}">
-          <span class="item-index">${numbered(index)}</span>
-          <div class="work-fields">
-            <label>
-              工种/班组
-              <input data-field="role" type="text" value="${escapeHtml(item.role)}" placeholder="电工班组" />
-            </label>
-            <label>
-              人数
-              <input data-field="people" type="number" min="0" step="1" value="${escapeHtml(item.people)}" placeholder="4" />
-            </label>
-            <label>
-              作业区域/任务
-              <textarea data-field="area" rows="2" placeholder="1层桥架及C型钢支座施工">${escapeHtml(item.area)}</textarea>
-            </label>
-          </div>
-          <button class="icon-button" data-action="remove-overview-person" type="button" title="删除">×</button>
-        </article>
-      `;
-    })
-    .join("");
+  overviewPeopleList.innerHTML = OVERVIEW_CATEGORIES.map((category) => {
+    const rows = overviewPeople.filter((item) => item.category === category.key);
+    const body = rows.length
+      ? rows
+          .map((item, index) => {
+            const isSubcontract = category.key === "subcontract";
+            return `
+              <article class="work-item" data-id="${item.id}">
+                <span class="item-index">${numbered(index)}</span>
+                <div class="work-fields">
+                  <label>
+                    班组
+                    <input data-field="role" type="text" value="${escapeHtml(item.role)}" placeholder="${escapeAttr(category.rolePlaceholder)}" />
+                  </label>
+                  <label>
+                    人数
+                    <input data-field="people" type="number" min="0" step="1" value="${escapeHtml(item.people)}" placeholder="4" />
+                  </label>
+                  <label>
+                    工作面
+                    <textarea data-field="area" rows="2" placeholder="${escapeAttr(category.areaPlaceholder)}">${escapeHtml(item.area)}</textarea>
+                  </label>
+                  ${
+                    isSubcontract
+                      ? `<label>
+                          进度情况
+                          <select data-field="progress">
+                            <option value="">请选择</option>
+                            ${SUBCONTRACT_PROGRESS_OPTIONS.map((option) => {
+                              const selected = clean(item.progress) === option ? "selected" : "";
+                              return `<option ${selected}>${escapeHtml(option)}</option>`;
+                            }).join("")}
+                          </select>
+                        </label>`
+                      : ""
+                  }
+                </div>
+                <button class="icon-button" data-action="remove-overview-person" type="button" title="删除">×</button>
+              </article>
+            `;
+          })
+          .join("")
+      : `<p class="empty-note">${category.emptyText}</p>`;
+
+    return `
+      <div class="overview-category" data-category="${category.key}">
+        <div class="category-head">
+          <h3>${category.title}</h3>
+          <button class="small-button" data-action="add-overview-person" data-category="${category.key}" type="button">${category.addLabel}</button>
+        </div>
+        <div class="item-list">${body}</div>
+      </div>
+    `;
+  }).join("");
 }
 
 function renderWeeklyPlanList() {
@@ -514,6 +601,7 @@ function escapeAttr(value) {
 function updateConditionalFields() {
   document.querySelector("#confirmFields").classList.toggle("is-open", checkedOf("hasConfirm"));
   document.querySelector("#riskFields").classList.toggle("is-open", checkedOf("hasRisk"));
+  document.querySelector("#delayFields").classList.toggle("is-open", isPhaseDelayed());
 }
 
 function updateOptionalSections() {
@@ -553,6 +641,8 @@ function buildReportText() {
     `现场人数：${peopleCountText(peopleCount)}`,
     `当前阶段：${stage}`,
     `进度状态：${status}`,
+    `总工期计划：${fallback(valueOf("plannedPeriod"), "__________")}`,
+    `总工期进度：${progressLabel(progressValue("totalProgress"))}`,
     "",
     sep,
     "",
@@ -565,13 +655,20 @@ function buildReportText() {
   );
 
   if (overviewPeopleRows.length) {
-    lines.push("", "现场人员配置：");
-    overviewPeopleRows.forEach((item, index) => {
-      const peopleText = clean(item.people) ? `${clean(item.people)}人` : "人数待补充";
-      lines.push(
-        `${numbered(index)} ${fallback(item.role, "工种/班组待补充")}：${peopleText}`,
-        `作业区域/任务：${fallback(item.area, "__________")}`
-      );
+    OVERVIEW_CATEGORIES.forEach((category) => {
+      const rows = overviewPeopleRows.filter((item) => item.category === category.key);
+      if (!rows.length) return;
+      lines.push("", `${category.title}：`);
+      rows.forEach((item, index) => {
+        const peopleText = clean(item.people) ? `${clean(item.people)}人` : "人数待补充";
+        lines.push(
+          `${numbered(index)} ${fallback(item.role, "班组待补充")}：${peopleText}`,
+          `工作面：${fallback(item.area, "__________")}`
+        );
+        if (category.key === "subcontract") {
+          lines.push(`进度情况：${fallback(item.progress, "__________")}`);
+        }
+      });
     });
   }
 
@@ -583,18 +680,24 @@ function buildReportText() {
     `安全文明：${fallback(valueOf("safetyStatus"), "正常")}`
   );
 
-  lines.push("", sep, "", "02｜工期计划与三层进度", "");
+  lines.push("", sep, "", "02｜工期计划与阶段执行", "");
   lines.push(
-    "总工期：",
-    `总工期计划：${fallback(valueOf("plannedPeriod"), "__________")}`,
-    `总工期完成比例：${progressLabel(progressValue("totalProgress"))}`,
-    `整体执行判断：${fallback(valueOf("scheduleCompare"), "按计划执行")}`,
-    "",
     "当前阶段：",
     `当前大阶段：${stage}`,
     `阶段目标：${fallback(valueOf("phaseGoal"), "__________")}`,
-    `阶段计划完成时间：${fallback(valueOf("phasePlanEnd"), "__________")}`,
-    `阶段完成比例：${progressLabel(progressValue("phaseProgress"))}`,
+    `阶段计划：${fallback(valueOf("phasePlanPeriod"), "__________")}`,
+    `阶段执行判断：${fallback(valueOf("scheduleCompare"), "按计划执行")}`,
+    `阶段完成比例：${progressLabel(progressValue("phaseProgress"))}`
+  );
+
+  if (isPhaseDelayed()) {
+    lines.push(
+      `滞后原因：${fallback(valueOf("delayReason"), "__________")}`,
+      `解决方案：${fallback(valueOf("delaySolution"), "__________")}`
+    );
+  }
+
+  lines.push(
     "",
     "本周计划：",
     `本周计划完成比例：${progressLabel(progressValue("weeklyProgress"))}`,
@@ -724,6 +827,8 @@ function getReportData(photoItems = previewPhotoItems()) {
   const totalProgress = progressValue("totalProgress");
   const phaseProgress = progressValue("phaseProgress");
   const weeklyProgress = progressValue("weeklyProgress");
+  const scheduleCompare = fallback(valueOf("scheduleCompare"), "按计划执行");
+  const hasPhaseDelay = isPhaseDelayed(scheduleCompare);
 
   return {
     companyName: currentCompanyName(),
@@ -739,8 +844,11 @@ function getReportData(photoItems = previewPhotoItems()) {
     totalProgress,
     totalProgressLabel: progressLabel(totalProgress),
     phaseGoal: fallback(valueOf("phaseGoal"), "阶段目标待填写"),
-    phasePlanEnd: fallback(valueOf("phasePlanEnd"), "阶段计划完成时间待填写"),
-    scheduleCompare: fallback(valueOf("scheduleCompare"), "按计划执行"),
+    phasePlanPeriod: fallback(valueOf("phasePlanPeriod"), "阶段计划待填写"),
+    scheduleCompare,
+    hasPhaseDelay,
+    delayReason: fallback(valueOf("delayReason"), "滞后原因待补充。"),
+    delaySolution: fallback(valueOf("delaySolution"), "解决方案待补充。"),
     phaseProgress,
     phaseProgressLabel: progressLabel(phaseProgress),
     weeklyProgress,
@@ -791,7 +899,7 @@ function scheduleAttentionLevel(data) {
 function textAttentionLevel(values) {
   const text = values.map((value) => clean(value)).join(" ");
   if (/严重|停工|返工|需重点关注|重大/.test(text)) return "danger";
-  if (/滞后|延后|延期|需关注|未完成|受限|影响/.test(text)) return "warn";
+  if (/滞后|延后|延期|需关注|未完成|受限|影响|待进场|待协调/.test(text)) return "warn";
   return "";
 }
 
@@ -813,20 +921,35 @@ function buildDocumentMarkup(photoItems) {
   const materialLevel = statusAttentionLevel(data.materialStatus);
   const safetyLevel = statusAttentionLevel(data.safetyStatus);
   const peopleHtml = data.overviewPeople.length
-    ? `<div class="doc-work-list">${data.overviewPeople
-        .map(
-          (item, index) => `
-            <article class="doc-work compact">
-              <div class="doc-work-title"><span>${numbered(index)}</span><strong>${escapeHtml(fallback(item.role, "工种/班组待补充"))}</strong></div>
-              <div class="doc-work-grid">
-                <div class="doc-mini"><span class="doc-mini-label">人数</span><strong>${escapeHtml(clean(item.people) ? `${clean(item.people)}人` : "待填写")}</strong></div>
-                <div class="doc-mini"><span class="doc-mini-label">作业区域/任务</span><strong>${escapeHtml(fallback(item.area, "待填写"))}</strong></div>
-              </div>
-            </article>
-          `
-        )
-        .join("")}</div>`
-    : `<div class="doc-alert"><strong>现场人员配置待补充</strong><span>补充班组、人数和作业任务后，客户可以更清楚看到现场组织情况。</span></div>`;
+    ? OVERVIEW_CATEGORIES.map((category) => {
+        const rows = data.overviewPeople.filter((item) => item.category === category.key);
+        if (!rows.length) return "";
+        return `
+          <div class="doc-category">
+            <h5>${escapeHtml(category.title)}</h5>
+            <div class="doc-work-list">${rows
+              .map((item, index) => {
+                const subcontractLevel = category.key === "subcontract" ? textAttentionLevel([item.progress]) : "";
+                return `
+                  <article class="${attentionClass("doc-work compact", subcontractLevel)}">
+                    <div class="doc-work-title"><span>${numbered(index)}</span><strong>${escapeHtml(fallback(item.role, "班组待补充"))}</strong></div>
+                    <div class="doc-work-grid">
+                      <div class="doc-mini"><span class="doc-mini-label">人数</span><strong>${escapeHtml(clean(item.people) ? `${clean(item.people)}人` : "待填写")}</strong></div>
+                      <div class="doc-mini"><span class="doc-mini-label">工作面</span><strong>${escapeHtml(fallback(item.area, "待填写"))}</strong></div>
+                      ${
+                        category.key === "subcontract"
+                          ? `<div class="${attentionClass("doc-mini wide", subcontractLevel)}"><span class="doc-mini-label">进度情况</span><strong>${escapeHtml(fallback(item.progress, "待填写"))}</strong></div>`
+                          : ""
+                      }
+                    </div>
+                  </article>
+                `;
+              })
+              .join("")}</div>
+          </div>
+        `;
+      }).join("")
+    : `<div class="doc-alert"><strong>现场人员配置待补充</strong><span>补充班组、人数和工作面后，客户可以更清楚看到现场组织情况。</span></div>`;
 
   const overviewStatusHtml = `
     <div class="doc-work-grid">
@@ -859,13 +982,6 @@ function buildDocumentMarkup(photoItems) {
     <div class="doc-progress-list">
       <div class="${attentionClass("doc-progress", scheduleLevel)}">
         <div class="doc-progress-head">
-          <span>总工期完成比例</span>
-          <strong>${escapeHtml(data.totalProgressLabel)}</strong>
-        </div>
-        <div class="doc-progress-track"><div class="${attentionClass("doc-progress-fill", scheduleLevel)}" style="width: ${data.totalProgress ?? 0}%"></div></div>
-      </div>
-      <div class="${attentionClass("doc-progress", scheduleLevel)}">
-        <div class="doc-progress-head">
           <span>当前阶段完成比例</span>
           <strong>${escapeHtml(data.phaseProgressLabel)}</strong>
         </div>
@@ -880,6 +996,15 @@ function buildDocumentMarkup(photoItems) {
       </div>
     </div>
   `;
+
+  const phaseDelayHtml = data.hasPhaseDelay
+    ? `<div class="${attentionClass("doc-alert", scheduleLevel)}">
+        <strong>阶段滞后原因</strong>
+        <p>${escapeHtml(data.delayReason)}</p>
+        <strong>解决方案</strong>
+        <p>${escapeHtml(data.delaySolution)}</p>
+      </div>`
+    : "";
 
   const completionsHtml = data.completions.length
     ? `<div class="doc-work-list">${data.completions
@@ -992,6 +1117,10 @@ function buildDocumentMarkup(photoItems) {
           <div><span>进度状态</span><strong>${escapeHtml(data.status)}</strong></div>
           <div><span>今日天气</span><strong>${escapeHtml(data.weather)}</strong></div>
         </div>
+        <div class="doc-hero-progress">
+          <div class="doc-hero-progress-head"><span>总工期计划：${escapeHtml(data.plannedPeriod)}</span><strong>${escapeHtml(data.totalProgressLabel)}</strong></div>
+          <div class="doc-hero-progress-track"><div class="doc-hero-progress-fill" style="width: ${data.totalProgress ?? 0}%"></div></div>
+        </div>
       </header>
 
       <section class="doc-section">
@@ -1006,17 +1135,17 @@ function buildDocumentMarkup(photoItems) {
 
       <section class="${attentionClass("doc-section soft", scheduleLevel)}">
         <div class="doc-section-head">
-          <h4>工期计划与三层进度</h4>
+          <h4>工期计划与阶段执行</h4>
           <span class="doc-section-kicker">02</span>
         </div>
         <div class="doc-work-grid">
-          <div class="doc-mini"><span class="doc-mini-label">总工期计划</span><strong>${escapeHtml(data.plannedPeriod)}</strong></div>
           <div class="doc-mini"><span class="doc-mini-label">当前阶段</span><strong>${escapeHtml(data.stage)}</strong></div>
           <div class="doc-mini"><span class="doc-mini-label">阶段目标</span><strong>${escapeHtml(data.phaseGoal)}</strong></div>
-          <div class="doc-mini"><span class="doc-mini-label">阶段计划完成时间</span><strong>${escapeHtml(data.phasePlanEnd)}</strong></div>
-          <div class="${attentionClass("doc-mini", scheduleLevel)}"><span class="doc-mini-label">执行判断</span><strong>${escapeHtml(data.scheduleCompare)}</strong></div>
+          <div class="doc-mini"><span class="doc-mini-label">阶段计划</span><strong>${escapeHtml(data.phasePlanPeriod)}</strong></div>
+          <div class="${attentionClass("doc-mini", scheduleLevel)}"><span class="doc-mini-label">阶段执行判断</span><strong>${escapeHtml(data.scheduleCompare)}</strong></div>
         </div>
         ${progressHtml}
+        ${phaseDelayHtml}
         <div class="doc-alert ok">
           <strong>本周目标</strong>
           <span>${escapeHtml(data.weeklyFocus)}</span>
@@ -1095,6 +1224,12 @@ function standaloneDocumentCss() {
     .doc-status span, .doc-section-kicker, .doc-photo-index, .doc-mini-label { display: block; color: #6b7779; font-size: 12px; font-weight: 800; }
     .doc-status span { color: #c8dedb; }
     .doc-status strong { display: block; margin-top: 4px; color: #fff; font-size: 16px; line-height: 1.35; }
+    .doc-hero-progress { margin-top: 13px; padding: 12px 13px 13px; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; background: rgba(255,255,255,.1); }
+    .doc-hero-progress-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #c8dedb; font-size: 13px; font-weight: 800; }
+    .doc-hero-progress-head span { line-height: 1.4; }
+    .doc-hero-progress-head strong { color: #fff; font-size: 17px; }
+    .doc-hero-progress-track { overflow: hidden; height: 10px; border-radius: 999px; background: rgba(255,255,255,.18); }
+    .doc-hero-progress-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #d7ebe7, #e5b65a); }
     .doc-section { padding: 24px; border-bottom: 1px solid #dfe8e6; background: #fff; }
     .doc-section.soft { background: #f7faf9; }
     .doc-section.attention-warn { border-left: 5px solid #d28a12; background: #fff8e8; }
@@ -1104,6 +1239,8 @@ function standaloneDocumentCss() {
     .doc-section-kicker { color: #176b61; }
     .doc-lead { margin: 0; color: #2e393b; }
     .doc-work-list, .doc-tomorrow-list { display: grid; gap: 10px; margin: 15px 0 0; }
+    .doc-category { margin-top: 15px; }
+    .doc-category h5 { margin: 0 0 8px; color: #0f4e48; font-size: 16px; line-height: 1.35; }
     .doc-work, .doc-tomorrow, .doc-alert { border: 1px solid #dfe8e6; border-radius: 8px; background: #fbfdfc; }
     .doc-work { padding: 14px; }
     .doc-work.attention-warn { border-color: #e5b65a; background: #fffaf0; }
@@ -1111,6 +1248,7 @@ function standaloneDocumentCss() {
     .doc-work-title { display: flex; gap: 8px; align-items: center; margin-bottom: 9px; color: #0f4e48; font-weight: 900; }
     .doc-work-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
     .doc-mini { padding: 9px 10px; border-radius: 6px; background: #f1f6f5; }
+    .doc-mini.wide { grid-column: 1 / -1; }
     .doc-mini.attention-warn { border: 1px solid #e5b65a; background: #fff1cb; }
     .doc-mini.attention-danger { border: 1px solid #e6a19a; background: #ffe1dc; }
     .doc-mini strong { display: block; margin-top: 2px; color: #20282a; font-size: 15px; }
@@ -1161,11 +1299,18 @@ function updateQuality() {
   if (!valueOf("people")) missing.push("现场人数");
   if (!valueOf("stage")) missing.push("当前阶段");
   if (!nonEmptyOverviewPeopleRows().length) missing.push("人员配置");
+  if (overviewRowsByCategory("subcontract").some((item) => !clean(item.progress))) {
+    missing.push("专业分包进度");
+  }
   if (!valueOf("plannedPeriod")) missing.push("总工期计划");
   if (progressValue("totalProgress") === null) missing.push("总工期进度");
   if (!valueOf("phaseGoal")) missing.push("阶段目标");
-  if (!valueOf("phasePlanEnd")) missing.push("阶段计划时间");
+  if (!valueOf("phasePlanPeriod")) missing.push("阶段计划");
   if (progressValue("phaseProgress") === null) missing.push("阶段进度");
+  if (isPhaseDelayed()) {
+    if (!valueOf("delayReason")) missing.push("滞后原因");
+    if (!valueOf("delaySolution")) missing.push("解决方案");
+  }
   if (progressValue("weeklyProgress") === null) missing.push("本周进度");
   if (!nonEmptyWeeklyRows().length) missing.push("本周计划");
   if (!nonEmptyCompletionRows().length) missing.push("完成内容");
@@ -1378,6 +1523,7 @@ const CANVAS_FONT =
 const CANVAS_WIDTH = 900;
 const CANVAS_MARGIN = 38;
 const CANVAS_GAP = 14;
+const CANVAS_PIXEL_RATIO = 2;
 
 function canvasFont(size, weight = 400) {
   return `${weight} ${size}px ${CANVAS_FONT}`;
@@ -1385,36 +1531,41 @@ function canvasFont(size, weight = 400) {
 
 function createCanvasState() {
   const canvas = document.createElement("canvas");
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = 6000;
+  canvas.width = CANVAS_WIDTH * CANVAS_PIXEL_RATIO;
+  canvas.height = 6000 * CANVAS_PIXEL_RATIO;
   const context = canvas.getContext("2d");
+  context.scale(CANVAS_PIXEL_RATIO, CANVAS_PIXEL_RATIO);
   context.fillStyle = "#f8faf9";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  return { canvas, context };
+  context.fillRect(0, 0, CANVAS_WIDTH, 6000);
+  return { canvas, context, logicalHeight: 6000 };
 }
 
 function ensureCanvasHeight(state, bottom) {
-  if (bottom <= state.canvas.height - 200) return;
-  const nextHeight = Math.ceil(Math.max(bottom + 1200, state.canvas.height * 1.5));
+  if (bottom <= state.logicalHeight - 200) return;
+  const nextHeight = Math.ceil(Math.max(bottom + 1200, state.logicalHeight * 1.5));
   const nextCanvas = document.createElement("canvas");
-  nextCanvas.width = state.canvas.width;
-  nextCanvas.height = nextHeight;
+  nextCanvas.width = CANVAS_WIDTH * CANVAS_PIXEL_RATIO;
+  nextCanvas.height = nextHeight * CANVAS_PIXEL_RATIO;
   const nextContext = nextCanvas.getContext("2d");
+  nextContext.scale(CANVAS_PIXEL_RATIO, CANVAS_PIXEL_RATIO);
   nextContext.fillStyle = "#f8faf9";
-  nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
-  nextContext.drawImage(state.canvas, 0, 0);
+  nextContext.fillRect(0, 0, CANVAS_WIDTH, nextHeight);
+  nextContext.drawImage(state.canvas, 0, 0, CANVAS_WIDTH, state.logicalHeight);
   state.canvas = nextCanvas;
   state.context = nextContext;
+  state.logicalHeight = nextHeight;
 }
 
 function finishCanvas(state, height) {
   const finalCanvas = document.createElement("canvas");
-  finalCanvas.width = state.canvas.width;
-  finalCanvas.height = Math.ceil(height);
+  const finalHeight = Math.ceil(height);
+  finalCanvas.width = CANVAS_WIDTH * CANVAS_PIXEL_RATIO;
+  finalCanvas.height = finalHeight * CANVAS_PIXEL_RATIO;
   const finalContext = finalCanvas.getContext("2d");
+  finalContext.scale(CANVAS_PIXEL_RATIO, CANVAS_PIXEL_RATIO);
   finalContext.fillStyle = "#f8faf9";
-  finalContext.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-  finalContext.drawImage(state.canvas, 0, 0);
+  finalContext.fillRect(0, 0, CANVAS_WIDTH, finalHeight);
+  finalContext.drawImage(state.canvas, 0, 0, CANVAS_WIDTH, state.logicalHeight);
   return finalCanvas;
 }
 
@@ -1515,7 +1666,7 @@ function attentionColors(level) {
 
 function drawCanvasHeader(state, data) {
   const context = state.context;
-  const height = 350;
+  const height = 450;
   const gradient = context.createLinearGradient(0, 0, CANVAS_WIDTH, height);
   gradient.addColorStop(0, "#0f4e48");
   gradient.addColorStop(1, "#315f6a");
@@ -1570,7 +1721,40 @@ function drawCanvasHeader(state, data) {
     });
   });
 
-  return 390;
+  const progressY = 350;
+  roundedRectPath(context, CANVAS_MARGIN, progressY, CANVAS_WIDTH - CANVAS_MARGIN * 2, 66, 10);
+  context.fillStyle = "rgba(255, 255, 255, 0.1)";
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  context.stroke();
+  drawCanvasText(state, `总工期计划：${data.plannedPeriod}`, CANVAS_MARGIN + 18, progressY + 12, CANVAS_WIDTH - CANVAS_MARGIN * 2 - 170, {
+    size: 18,
+    weight: 800,
+    color: "#c8dedb",
+    lineHeight: 24,
+  });
+  drawCanvasText(state, data.totalProgressLabel, CANVAS_WIDTH - CANVAS_MARGIN - 120, progressY + 10, 100, {
+    size: 25,
+    weight: 900,
+    color: "#ffffff",
+    lineHeight: 30,
+  });
+  const trackX = CANVAS_MARGIN + 18;
+  const trackY = progressY + 44;
+  const trackW = CANVAS_WIDTH - CANVAS_MARGIN * 2 - 36;
+  const trackH = 12;
+  roundedRectPath(context, trackX, trackY, trackW, trackH, 99);
+  context.fillStyle = "rgba(255, 255, 255, 0.18)";
+  context.fill();
+  const progress = data.totalProgress === null ? 0 : Math.max(0, Math.min(100, data.totalProgress));
+  const progressGradient = context.createLinearGradient(trackX, trackY, trackX + trackW, trackY);
+  progressGradient.addColorStop(0, "#d7ebe7");
+  progressGradient.addColorStop(1, "#e5b65a");
+  roundedRectPath(context, trackX, trackY, (trackW * progress) / 100, trackH, 99);
+  context.fillStyle = progressGradient;
+  context.fill();
+
+  return 490;
 }
 
 function drawSectionTitle(state, y, index, title) {
@@ -1693,35 +1877,81 @@ function drawProgressCard(state, y, label, value, level = "", fillClass = "") {
   return y + 110;
 }
 
+function measureWorkField(state, field, width) {
+  const valueMeasure = measureCanvasText(state, field.value, width - 28, {
+    size: 21,
+    weight: 900,
+    lineHeight: 30,
+  });
+  return Math.max(78, 42 + valueMeasure.height);
+}
+
+function drawWorkFieldCard(state, x, y, width, height, field) {
+  const colors = attentionColors(field.level || "");
+  drawBox(state, x, y, width, height, {
+    fill: field.level ? colors.fill : "#f1f6f5",
+    stroke: field.level ? colors.stroke : "",
+    radius: 9,
+  });
+  drawCanvasText(state, field.label, x + 14, y + 12, width - 28, {
+    size: 16,
+    weight: 800,
+    color: "#6b7779",
+    lineHeight: 22,
+  });
+  drawCanvasText(state, field.value, x + 14, y + 36, width - 28, {
+    size: 21,
+    weight: 900,
+    color: colors.text,
+    lineHeight: 30,
+  });
+}
+
 function drawWorkCard(state, y, title, fields, note, level = "") {
   const width = CANVAS_WIDTH - CANVAS_MARGIN * 2;
   const colors = attentionColors(level);
-  const fieldTexts = fields.map((field) => `${field.label}：${field.value}`);
-  const fieldMeasures = fieldTexts.map((text) =>
-    measureCanvasText(state, text, width - 40, { size: 21, weight: 700, lineHeight: 30 })
-  );
+  const innerX = CANVAS_MARGIN + 20;
+  const innerWidth = width - 40;
+  const fieldGap = 10;
+  const fieldWidth = (innerWidth - fieldGap) / 2;
+  const titleMeasure = measureCanvasText(state, title, innerWidth, {
+    size: 24,
+    weight: 900,
+    lineHeight: 30,
+  });
+  const fieldRows = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    const rowFields = fields.slice(index, index + 2);
+    const rowHeights = rowFields.map((field) => measureWorkField(state, field, fieldWidth));
+    fieldRows.push({ fields: rowFields, height: Math.max(...rowHeights) });
+  }
   const noteMeasure = note ? measureCanvasText(state, note, width - 40, { size: 21, lineHeight: 32 }) : { height: 0 };
-  const fieldHeight = fieldMeasures.reduce((sum, item) => sum + item.height + 12, 0);
-  const height = 72 + fieldHeight + noteMeasure.height + (note ? 16 : 0);
+  const fieldGridHeight = fieldRows.reduce((sum, row, index) => sum + row.height + (index ? fieldGap : 0), 0);
+  const height =
+    18 +
+    titleMeasure.height +
+    (fieldRows.length ? 13 + fieldGridHeight : 0) +
+    (note ? 15 + noteMeasure.height : 0) +
+    18;
   drawBox(state, CANVAS_MARGIN, y, width, height, { fill: colors.fill, stroke: colors.stroke, radius: 12 });
-  drawCanvasText(state, title, CANVAS_MARGIN + 20, y + 18, width - 40, {
+  drawCanvasText(state, title, innerX, y + 18, innerWidth, {
     size: 24,
     weight: 900,
     color: colors.accent,
     lineHeight: 30,
   });
-  let cursor = y + 58;
-  fieldTexts.forEach((text, index) => {
-    drawCanvasText(state, text, CANVAS_MARGIN + 20, cursor, width - 40, {
-      size: 21,
-      weight: 700,
-      color: colors.text,
-      lineHeight: 30,
+
+  let cursor = y + 18 + titleMeasure.height + 13;
+  fieldRows.forEach((row) => {
+    row.fields.forEach((field, index) => {
+      const fieldX = innerX + index * (fieldWidth + fieldGap);
+      drawWorkFieldCard(state, fieldX, cursor, fieldWidth, row.height, field);
     });
-    cursor += fieldMeasures[index].height + 12;
+    cursor += row.height + fieldGap;
   });
   if (note) {
-    drawCanvasText(state, note, CANVAS_MARGIN + 20, cursor, width - 40, {
+    cursor += 5;
+    drawCanvasText(state, note, innerX, cursor, innerWidth, {
       size: 21,
       weight: 400,
       color: "#4f5a5c",
@@ -1821,35 +2051,58 @@ function drawCanvasReport(data, photoImages) {
     { label: "现场人数", value: data.people },
   ]) + 8;
   if (data.overviewPeople.length) {
-    data.overviewPeople.forEach((item, index) => {
-      y = drawWorkCard(
-        state,
-        y,
-        `${numbered(index)} ${fallback(item.role, "工种/班组待补充")}`,
-        [
+    OVERVIEW_CATEGORIES.forEach((category) => {
+      const rows = data.overviewPeople.filter((item) => item.category === category.key);
+      if (!rows.length) return;
+      y = drawCanvasText(state, category.title, CANVAS_MARGIN, y + 8, CANVAS_WIDTH - CANVAS_MARGIN * 2, {
+        size: 24,
+        weight: 900,
+        color: "#0f4e48",
+        lineHeight: 32,
+      }) + 8;
+      rows.forEach((item, index) => {
+        const fields = [
           { label: "人数", value: clean(item.people) ? `${clean(item.people)}人` : "待填写" },
-          { label: "作业区域/任务", value: fallback(item.area, "待填写") },
-        ],
-        ""
-      );
+          { label: "工作面", value: fallback(item.area, "待填写") },
+        ];
+        const subcontractLevel = category.key === "subcontract" ? textAttentionLevel([item.progress]) : "";
+        if (category.key === "subcontract") {
+          fields.push({ label: "进度情况", value: fallback(item.progress, "待填写"), level: subcontractLevel });
+        }
+        y = drawWorkCard(
+          state,
+          y,
+          `${numbered(index)} ${fallback(item.role, "班组待补充")}`,
+          fields,
+          "",
+          subcontractLevel
+        );
+      });
     });
   } else {
-    y = drawParagraphCard(state, y, "现场人员配置待补充", "补充班组、人数和作业任务后，客户可以更清楚看到现场组织情况。");
+    y = drawParagraphCard(state, y, "现场人员配置待补充", "补充班组、人数和工作面后，客户可以更清楚看到现场组织情况。");
   }
 
   y += 18;
   const scheduleLevel = scheduleAttentionLevel(data);
-  y = drawSectionTitle(state, y, 2, "工期计划与三层进度");
+  y = drawSectionTitle(state, y, 2, "工期计划与阶段执行");
   y = drawMiniGrid(state, y, [
-    { label: "总工期计划", value: data.plannedPeriod },
     { label: "当前阶段", value: data.stage },
     { label: "阶段目标", value: data.phaseGoal },
-    { label: "阶段计划完成时间", value: data.phasePlanEnd },
-    { label: "执行判断", value: data.scheduleCompare, level: scheduleLevel },
+    { label: "阶段计划", value: data.phasePlanPeriod },
+    { label: "阶段执行判断", value: data.scheduleCompare, level: scheduleLevel },
   ]) + 8;
-  y = drawProgressCard(state, y, "总工期完成比例", data.totalProgress, scheduleLevel);
   y = drawProgressCard(state, y, "当前阶段完成比例", data.phaseProgress, scheduleLevel);
   y = drawProgressCard(state, y, "本周计划完成比例", data.weeklyProgress, scheduleLevel, "weekly");
+  if (data.hasPhaseDelay) {
+    y = drawParagraphCard(
+      state,
+      y,
+      "阶段滞后原因与解决方案",
+      `滞后原因：${data.delayReason}\n解决方案：${data.delaySolution}`,
+      scheduleLevel
+    );
+  }
   y = drawParagraphCard(state, y, "本周目标", data.weeklyFocus, scheduleLevel);
   y = drawParagraphCard(state, y, "进度说明", data.scheduleNote, scheduleLevel);
   if (data.weeklyTasks.length) {
@@ -2084,7 +2337,8 @@ async function runExport(buttonSelector, loadingText, successText, task) {
   try {
     await task();
     showToast(successText);
-  } catch {
+  } catch (error) {
+    console.error(error);
     showToast("导出失败，请重新选择照片后再试");
   } finally {
     button.disabled = false;
@@ -2186,7 +2440,7 @@ function loadSample() {
     plannedPeriod: "2026年4月20日-2026年6月30日",
     totalProgress: "16",
     phaseGoal: "完成机电隐蔽工程施工",
-    phasePlanEnd: "5月20日",
+    phasePlanPeriod: "4月20日-5月20日",
     scheduleCompare: "按计划执行",
     phaseProgress: "40",
     weeklyProgress: "45",
@@ -2205,15 +2459,19 @@ function loadSample() {
   overviewPeople = [
     {
       id: createId(),
-      role: "电工班组",
-      people: "4",
-      area: "1层桥架定位、安装及C型钢支座施工",
+      category: "decoration",
+      role: "精装协调班组",
+      people: "2",
+      area: "现场作业面协调、材料整理及成品保护检查",
+      progress: "",
     },
     {
       id: createId(),
-      role: "新风施工人员",
-      people: "1",
-      area: "现场作业面协调及明日2层新风管施工准备",
+      category: "subcontract",
+      role: "机电施工班组",
+      people: "3",
+      area: "1层桥架定位、安装及C型钢支座施工",
+      progress: "进行中",
     },
   ];
   syncPeopleFromOverview();
@@ -2306,11 +2564,26 @@ function bindEvents() {
     updateReport();
   });
 
+  overviewPeopleList.addEventListener("change", (event) => {
+    updateCollectionItem(event, overviewPeople);
+    syncPeopleFromOverview();
+    updateReport();
+  });
+
   overviewPeopleList.addEventListener("click", (event) => {
+    const addButton = event.target.closest("[data-action='add-overview-person']");
+    if (addButton) {
+      overviewPeople.push(blankOverviewPerson(addButton.dataset.category || "decoration"));
+      syncPeopleFromOverview();
+      renderOverviewPeopleList();
+      updateReport();
+      return;
+    }
+
     const button = event.target.closest("[data-action='remove-overview-person']");
     if (!button) return;
     const item = button.closest("[data-id]");
-    overviewPeople = removeCollectionItem(item.dataset.id, overviewPeople, blankOverviewPerson);
+    overviewPeople = overviewPeople.filter((entry) => entry.id !== item.dataset.id);
     syncPeopleFromOverview();
     renderOverviewPeopleList();
     updateReport();
@@ -2358,13 +2631,6 @@ function bindEvents() {
   document.querySelector("#addCompletionBtn").addEventListener("click", () => {
     completions.push(blankCompletion());
     renderCompletionList();
-    updateReport();
-  });
-
-  document.querySelector("#addOverviewPersonBtn").addEventListener("click", () => {
-    overviewPeople.push(blankOverviewPerson());
-    syncPeopleFromOverview();
-    renderOverviewPeopleList();
     updateReport();
   });
 

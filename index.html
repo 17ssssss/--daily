@@ -67,6 +67,14 @@
                     <option>需重点关注</option>
                   </select>
                 </label>
+                <label>
+                  总工期计划
+                  <input id="plannedPeriod" type="text" placeholder="2026年4月20日-2026年6月30日" />
+                </label>
+                <label>
+                  总工期完成比例（%）
+                  <input id="totalProgress" type="number" min="0" max="100" step="1" placeholder="16" />
+                </label>
               </div>
             </section>
 
@@ -76,7 +84,6 @@
                   <span>02</span>
                   <h2>今日现场概览</h2>
                 </div>
-                <button class="small-button" type="button" id="addOverviewPersonBtn">增加人员</button>
               </div>
               <div class="field-grid">
                 <label>
@@ -104,39 +111,16 @@
                   </select>
                 </label>
               </div>
-              <div class="item-list stacked-field" id="overviewPeopleList"></div>
+              <div class="overview-categories stacked-field" id="overviewPeopleList"></div>
             </section>
 
             <section class="form-section">
               <div class="section-title with-action">
                 <div>
                   <span>03</span>
-                  <h2>工期计划与三层进度</h2>
+                  <h2>工期计划与阶段执行</h2>
                 </div>
                 <button class="small-button" type="button" id="addWeeklyBtn">增加周计划</button>
-              </div>
-
-              <div class="schedule-group">
-                <h3>总工期</h3>
-                <div class="field-grid">
-                  <label>
-                    总工期计划
-                    <input id="plannedPeriod" type="text" placeholder="2026年4月20日-2026年6月30日" />
-                  </label>
-                  <label>
-                    总工期完成比例（%）
-                    <input id="totalProgress" type="number" min="0" max="100" step="1" placeholder="16" />
-                  </label>
-                  <label>
-                    整体执行判断
-                    <select id="scheduleCompare">
-                      <option>按计划执行</option>
-                      <option>略有提前</option>
-                      <option>轻微滞后</option>
-                      <option>需重点关注</option>
-                    </select>
-                  </label>
-                </div>
               </div>
 
               <div class="schedule-group">
@@ -147,12 +131,31 @@
                     <input id="phaseGoal" type="text" placeholder="完成机电隐蔽工程施工" />
                   </label>
                   <label>
-                    阶段计划完成时间
-                    <input id="phasePlanEnd" type="text" placeholder="5月20日" />
+                    阶段计划
+                    <input id="phasePlanPeriod" type="text" placeholder="4月20日-5月20日" />
+                  </label>
+                  <label>
+                    阶段执行判断
+                    <select id="scheduleCompare">
+                      <option>按计划执行</option>
+                      <option>略有提前</option>
+                      <option>轻微滞后</option>
+                      <option>需重点关注</option>
+                    </select>
                   </label>
                   <label>
                     阶段完成比例（%）
                     <input id="phaseProgress" type="number" min="0" max="100" step="1" placeholder="40" />
+                  </label>
+                </div>
+                <div class="conditional two" id="delayFields">
+                  <label>
+                    滞后原因
+                    <textarea id="delayReason" rows="3" placeholder="例如：物业施工时间限制、材料到场延后、前置工序未完全移交。"></textarea>
+                  </label>
+                  <label>
+                    解决方案
+                    <textarea id="delaySolution" rows="3" placeholder="例如：调整班组排班，优先完成关键作业面，并同步协调材料和物业施工窗口。"></textarea>
                   </label>
                 </div>
               </div>
@@ -354,6 +357,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=20260507-export4"></script>
   </body>
 </html>
