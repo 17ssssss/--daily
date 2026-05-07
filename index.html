@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>新熙华施工日报生成器</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">新熙华</p>
+          <h1>今日施工简报生成器</h1>
+        </div>
+        <div class="top-actions">
+          <button class="secondary" type="button" id="sampleBtn">套用示例</button>
+          <button class="ghost" type="button" id="clearBtn">清空草稿</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel editor-panel" aria-label="日报填写区">
+          <form id="reportForm" autocomplete="off">
+            <section class="form-section">
+              <div class="section-title">
+                <span>01</span>
+                <h2>基础信息</h2>
+              </div>
+              <div class="field-grid">
+                <label>
+                  项目名称
+                  <input id="projectName" type="text" placeholder="云栖谷1期15栋" />
+                </label>
+                <label>
+                  日期
+                  <input id="reportDate" type="date" />
+                </label>
+                <label>
+                  项目经理
+                  <input id="manager" type="text" placeholder="代府诚" />
+                </label>
+                <label>
+                  今日天气
+                  <input id="weather" type="text" placeholder="阴" />
+                </label>
+                <label>
+                  现场人数
+                  <input id="people" type="number" min="0" step="1" placeholder="5" />
+                </label>
+                <label>
+                  当前阶段
+                  <input id="stage" type="text" placeholder="机电安装阶段" />
+                </label>
+                <label>
+                  进度状态
+                  <select id="status">
+                    <option>正常推进</option>
+                    <option>轻微滞后</option>
+                    <option>需重点关注</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title with-action">
+                <div>
+                  <span>02</span>
+                  <h2>今日现场概览</h2>
+                </div>
+                <button class="small-button" type="button" id="addOverviewPersonBtn">增加人员</button>
+              </div>
+              <div class="field-grid">
+                <label>
+                  作业面状态
+                  <select id="workfaceStatus">
+                    <option>正常展开</option>
+                    <option>局部受限</option>
+                    <option>需协调</option>
+                  </select>
+                </label>
+                <label>
+                  材料状态
+                  <select id="materialStatus">
+                    <option>材料到位</option>
+                    <option>部分待进场</option>
+                    <option>需协调</option>
+                  </select>
+                </label>
+                <label>
+                  安全文明状态
+                  <select id="safetyStatus">
+                    <option>正常</option>
+                    <option>需加强</option>
+                    <option>需重点关注</option>
+                  </select>
+                </label>
+              </div>
+              <div class="item-list stacked-field" id="overviewPeopleList"></div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title with-action">
+                <div>
+                  <span>03</span>
+                  <h2>工期计划与执行</h2>
+                </div>
+                <button class="small-button" type="button" id="addWeeklyBtn">增加周计划</button>
+              </div>
+              <div class="field-grid">
+                <label>
+                  总工期计划
+                  <input id="plannedPeriod" type="text" placeholder="2026年4月20日-2026年6月30日" />
+                </label>
+                <label>
+                  本阶段目标
+                  <input id="phaseGoal" type="text" placeholder="完成机电隐蔽工程施工" />
+                </label>
+                <label>
+                  本阶段计划完成时间
+                  <input id="phasePlanEnd" type="text" placeholder="5月20日" />
+                </label>
+                <label>
+                  工期执行判断
+                  <select id="scheduleCompare">
+                    <option>按计划执行</option>
+                    <option>略有提前</option>
+                    <option>轻微滞后</option>
+                    <option>需重点关注</option>
+                  </select>
+                </label>
+                <label>
+                  本阶段完成比例（%）
+                  <input id="phaseProgress" type="number" min="0" max="100" step="1" placeholder="40" />
+                </label>
+                <label>
+                  本周计划完成比例（%）
+                  <input id="weeklyProgress" type="number" min="0" max="100" step="1" placeholder="45" />
+                </label>
+              </div>
+              <label class="stacked-field">
+                本周总体目标
+                <textarea id="weeklyFocus" rows="3" placeholder="本周重点完成1层桥架及支座施工，同步推进2层新风管施工，为机电隐蔽验收做准备。"></textarea>
+              </label>
+              <div class="item-list" id="weeklyPlanList"></div>
+              <label class="stacked-field">
+                工期说明
+                <textarea id="scheduleNote" rows="3" placeholder="当前施工内容与本阶段计划匹配，五一期间施工限制已纳入排期调整。"></textarea>
+              </label>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title with-action">
+                <div>
+                  <span>04</span>
+                  <h2>今日完成内容</h2>
+                </div>
+                <button class="small-button" type="button" id="addCompletionBtn">增加一项</button>
+              </div>
+              <div class="item-list" id="completionList"></div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title">
+                <span>05</span>
+                <h2>现场照片</h2>
+              </div>
+              <label class="upload-zone" for="photoInput">
+                <input id="photoInput" type="file" accept="image/*" multiple />
+                <strong>上传现场照片</strong>
+                <span>建议6张，最多9张，文档版会按顺序大图展示</span>
+              </label>
+              <div class="photo-status" id="photoStatus">尚未上传照片</div>
+              <div class="photo-list" id="photoList"></div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title with-action">
+                <div>
+                  <span>06</span>
+                  <h2>明日工作安排</h2>
+                </div>
+                <button class="small-button" type="button" id="addTomorrowBtn">增加一项</button>
+              </div>
+              <div class="item-list" id="tomorrowList"></div>
+              <label>
+                明日重点
+                <textarea id="tomorrowFocus" rows="3" placeholder="继续推进1层桥架及支座施工，并同步安排2层新风管施工。"></textarea>
+              </label>
+            </section>
+
+            <section class="form-section two-column">
+              <div class="optional-block" id="confirmBlock">
+                <div class="section-title with-action">
+                  <div>
+                    <span>07</span>
+                    <h2>客户需确认事项</h2>
+                  </div>
+                  <button class="small-button danger-button" type="button" id="toggleConfirmSectionBtn">删除板块</button>
+                </div>
+                <p class="optional-note">本次日报已隐藏此板块，导出的文档和文字版不会显示。</p>
+                <div class="optional-body">
+                  <label class="switch-row">
+                    <input id="hasConfirm" type="checkbox" />
+                    <span>今日有需客户确认事项</span>
+                  </label>
+                  <div class="conditional" id="confirmFields">
+                    <label>
+                      事项
+                      <input id="confirmItem" type="text" placeholder="材料颜色确认" />
+                    </label>
+                    <label>
+                      最晚确认时间
+                      <input id="confirmDeadline" type="text" placeholder="5月8日" />
+                    </label>
+                    <label>
+                      如未确认影响
+                      <textarea id="confirmImpact" rows="2" placeholder="将影响后续材料下单及安装排期。"></textarea>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="optional-block" id="riskBlock">
+                <div class="section-title with-action">
+                  <div>
+                    <span>08</span>
+                    <h2>问题与风险提示</h2>
+                  </div>
+                  <button class="small-button danger-button" type="button" id="toggleRiskSectionBtn">删除板块</button>
+                </div>
+                <p class="optional-note">本次日报已隐藏此板块，导出的文档和文字版不会显示。</p>
+                <div class="optional-body">
+                  <label class="switch-row">
+                    <input id="hasRisk" type="checkbox" />
+                    <span>今日有新增问题或风险</span>
+                  </label>
+                  <div class="conditional" id="riskFields">
+                    <label>
+                      问题
+                      <input id="riskProblem" type="text" placeholder="物业限制施工时间" />
+                    </label>
+                    <label>
+                      影响
+                      <textarea id="riskImpact" rows="2" placeholder="部分工序需调整到允许施工时段。"></textarea>
+                    </label>
+                    <label>
+                      解决方案
+                      <textarea id="riskSolution" rows="2" placeholder="根据物业要求调整作业顺序，优先安排低噪音工序。"></textarea>
+                    </label>
+                    <div class="compact-fields two">
+                      <label>
+                        责任人
+                        <input id="riskOwner" type="text" placeholder="项目经理" />
+                      </label>
+                      <label>
+                        计划解决时间
+                        <input id="riskDate" type="text" placeholder="5月8日" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-title">
+                <span>09</span>
+                <h2>项目经理说明</h2>
+              </div>
+              <textarea id="summary" rows="3" placeholder="今日现场整体推进正常。后续我们将继续按照施工计划推进，并持续关注机电隐蔽节点、现场秩序、材料衔接及安全文明施工。"></textarea>
+            </section>
+          </form>
+        </section>
+
+        <aside class="panel preview-panel" aria-label="日报预览">
+          <div class="preview-head">
+            <div>
+              <p class="eyebrow">客户查看版</p>
+              <h2>精美图文施工日报</h2>
+            </div>
+            <div class="preview-actions">
+              <button class="primary" type="button" id="exportImageBtn">导出长图</button>
+              <button class="secondary" type="button" id="exportPdfBtn">导出PDF</button>
+              <button class="primary" type="button" id="exportDocBtn">导出文档</button>
+              <button class="secondary" type="button" id="copyBtn">复制文字</button>
+              <button class="ghost" type="button" id="downloadBtn">下载文本</button>
+            </div>
+          </div>
+
+          <div class="quality" id="qualityBox">
+            <strong id="qualityTitle">待完善</strong>
+            <span id="qualityText">补充项目名称、现场人数、完成内容和照片后即可发送。</span>
+          </div>
+
+          <div class="preview-tabs" role="tablist" aria-label="预览模式">
+            <button class="is-active" type="button" data-preview-tab="document">精美文档版</button>
+            <button type="button" data-preview-tab="text">微信文字版</button>
+          </div>
+
+          <div class="preview-mode is-active" id="documentPreviewPanel">
+            <div class="document-frame">
+              <div class="document-preview" id="documentPreview"></div>
+            </div>
+            <div class="send-order">
+              <strong>推荐发送</strong>
+              <span>1 导出长图发群</span>
+              <span>2 PDF用于归档</span>
+              <span>3 重要照片另发原图</span>
+            </div>
+          </div>
+
+          <div class="preview-mode" id="textPreviewPanel">
+            <pre class="wechat-preview" id="reportPreview"></pre>
+            <textarea class="raw-output" id="reportOutput" readonly></textarea>
+            <div class="send-order">
+              <strong>轻量发送</strong>
+              <span>1 复制正文</span>
+              <span>2 按图序发送照片</span>
+              <span>3 检查确认事项</span>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
