@@ -1518,6 +1518,179 @@ function loadImage(url) {
   });
 }
 
+const PREVIEW_EXPORT_WIDTH = 430;
+const PREVIEW_EXPORT_SCALE = 3;
+const PREVIEW_EXPORT_MAX_SIDE = 30000;
+const PREVIEW_EXPORT_CSS_VARS = [
+  "--bg",
+  "--panel",
+  "--panel-soft",
+  "--ink",
+  "--muted",
+  "--line",
+  "--brand",
+  "--brand-deep",
+  "--blue",
+  "--gold",
+  "--danger",
+  "--shadow",
+  "--radius",
+];
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+function canUsePreviewCapture() {
+  return window.location.protocol !== "file:";
+}
+
+function collectPreviewCaptureCss() {
+  const pageCss = Array.from(document.styleSheets)
+    .map((sheet) => {
+      try {
+        return Array.from(sheet.cssRules)
+          .map((rule) => rule.cssText)
+          .join("\n");
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean)
+    .join("\n");
+  const computedRoot = getComputedStyle(document.documentElement);
+  const rootVars = PREVIEW_EXPORT_CSS_VARS.map((name) => {
+    const value = computedRoot.getPropertyValue(name).trim();
+    return value ? `${name}: ${value};` : "";
+  })
+    .filter(Boolean)
+    .join("\n");
+
+  return `
+    ${pageCss}
+    .preview-capture-root,
+    .preview-capture-root .document-preview {
+      ${rootVars}
+    }
+    .preview-capture-root {
+      width: ${PREVIEW_EXPORT_WIDTH}px;
+      min-height: 0;
+      margin: 0;
+      background: #f8faf9;
+      color: #1f2829;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+    }
+    .preview-capture-root .document-preview {
+      width: ${PREVIEW_EXPORT_WIDTH}px !important;
+      min-height: 0 !important;
+      margin: 0 !important;
+    }
+  `;
+}
+
+function createPreviewCaptureNode(photoItems) {
+  const stage = document.createElement("div");
+  stage.style.position = "fixed";
+  stage.style.left = "-10000px";
+  stage.style.top = "0";
+  stage.style.width = `${PREVIEW_EXPORT_WIDTH}px`;
+  stage.style.background = "#f8faf9";
+  stage.style.pointerEvents = "none";
+  stage.style.zIndex = "-1";
+
+  const preview = document.createElement("div");
+  preview.className = "document-preview";
+  preview.style.width = `${PREVIEW_EXPORT_WIDTH}px`;
+  preview.style.minHeight = "0";
+  preview.style.margin = "0";
+  preview.innerHTML = buildDocumentMarkup(photoItems);
+
+  stage.append(preview);
+  document.body.append(stage);
+  return { stage, preview };
+}
+
+async function waitForNodeImages(node) {
+  const images = Array.from(node.querySelectorAll("img"));
+  await Promise.all(
+    images.map((image) => {
+      if (image.complete && image.naturalWidth) {
+        return image.decode ? image.decode().catch(() => {}) : Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        image.onload = resolve;
+        image.onerror = resolve;
+      });
+    })
+  );
+}
+
+function buildPreviewCaptureSvg(preview, width, height) {
+  const root = document.createElement("div");
+  root.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  root.className = "preview-capture-root";
+
+  const style = document.createElement("style");
+  style.textContent = collectPreviewCaptureCss();
+  root.append(style);
+
+  const clone = preview.cloneNode(true);
+  clone.style.width = `${width}px`;
+  clone.style.minHeight = "0";
+  clone.style.margin = "0";
+  root.append(clone);
+
+  const serialized = new XMLSerializer().serializeToString(root);
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <foreignObject x="0" y="0" width="100%" height="100%">
+        ${serialized}
+      </foreignObject>
+    </svg>
+  `;
+}
+
+async function renderPreviewDocumentCanvas(photoItems) {
+  if (!canUsePreviewCapture()) {
+    throw new Error("Preview capture requires an http or https page");
+  }
+  if (document.fonts?.ready) {
+    await document.fonts.ready.catch(() => {});
+  }
+
+  const { stage, preview } = createPreviewCaptureNode(photoItems);
+  try {
+    await waitForNodeImages(preview);
+    await nextFrame();
+    await nextFrame();
+
+    const width = PREVIEW_EXPORT_WIDTH;
+    const height = Math.ceil(preview.scrollHeight || preview.getBoundingClientRect().height);
+    const scale = Math.max(
+      1,
+      Math.min(
+        PREVIEW_EXPORT_SCALE,
+        PREVIEW_EXPORT_MAX_SIDE / width,
+        PREVIEW_EXPORT_MAX_SIDE / height
+      )
+    );
+    const svgText = buildPreviewCaptureSvg(preview, width, height);
+    const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+    const image = await loadImage(svgUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(width * scale);
+    canvas.height = Math.ceil(height * scale);
+    const context = canvas.getContext("2d");
+    context.scale(scale, scale);
+    context.fillStyle = "#f8faf9";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas;
+  } finally {
+    stage.remove();
+  }
+}
+
 const CANVAS_FONT =
   '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", Arial, sans-serif';
 const CANVAS_WIDTH = 900;
@@ -2215,6 +2388,21 @@ async function renderDocumentCanvas(photoItems) {
   return drawCanvasReport(data, photoImages);
 }
 
+async function renderExportCanvas(photoItems, useCanvas) {
+  if (canUsePreviewCapture()) {
+    try {
+      const previewCanvas = await renderPreviewDocumentCanvas(photoItems);
+      await useCanvas(previewCanvas);
+      return;
+    } catch (error) {
+      console.warn("精美预览导出失败，已切换备用导出。", error);
+    }
+  }
+
+  const fallbackCanvas = await renderDocumentCanvas(photoItems);
+  await useCanvas(fallbackCanvas);
+}
+
 function base64ToBytes(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -2349,18 +2537,20 @@ async function runExport(buttonSelector, loadingText, successText, task) {
 async function exportLongImage() {
   await runExport("#exportImageBtn", "生成中", "长图已导出", async () => {
     const photoItems = await exportPhotoItems();
-    const canvas = await renderDocumentCanvas(photoItems);
-    const blob = await canvasToBlob(canvas, "image/png");
-    downloadBlob(blob, `${exportBaseName()}-长图.png`);
+    await renderExportCanvas(photoItems, async (canvas) => {
+      const blob = await canvasToBlob(canvas, "image/png");
+      downloadBlob(blob, `${exportBaseName()}-长图.png`);
+    });
   });
 }
 
 async function exportPdf() {
   await runExport("#exportPdfBtn", "生成中", "PDF已导出", async () => {
     const photoItems = await exportPhotoItems();
-    const canvas = await renderDocumentCanvas(photoItems);
-    const blob = buildPdfFromCanvas(canvas);
-    downloadBlob(blob, `${exportBaseName()}.pdf`);
+    await renderExportCanvas(photoItems, async (canvas) => {
+      const blob = buildPdfFromCanvas(canvas);
+      downloadBlob(blob, `${exportBaseName()}.pdf`);
+    });
   });
 }
 
