@@ -1,7 +1,9 @@
 const STORAGE_KEY = "yuanbenDailyReportDraft.v1";
 const MAX_PHOTOS = 9;
+const DEFAULT_COMPANY = "新熙华";
 
 const fieldIds = [
+  "companyName",
   "projectName",
   "reportDate",
   "manager",
@@ -183,6 +185,16 @@ function fallback(value, placeholder) {
   return clean(value) || placeholder;
 }
 
+function currentCompanyName() {
+  return fallback(valueOf("companyName"), DEFAULT_COMPANY);
+}
+
+function updatePageBranding() {
+  const company = currentCompanyName();
+  document.querySelector("#appCompanyLabel").textContent = company;
+  document.title = `${company}施工日报生成器`;
+}
+
 function progressValue(id) {
   const rawValue = valueOf(id);
   if (!rawValue) return null;
@@ -276,6 +288,10 @@ function applyDraft(draft) {
     setValue(id, draft?.fields?.[id] || "");
   });
 
+  if (!valueOf("companyName")) {
+    setValue("companyName", DEFAULT_COMPANY);
+  }
+
   if (!valueOf("reportDate")) {
     setValue("reportDate", todayInputValue());
   }
@@ -330,6 +346,7 @@ function applyDraft(draft) {
   renderPhotoList();
   updateConditionalFields();
   updateOptionalSections();
+  updatePageBranding();
   updateReport();
 }
 
@@ -510,6 +527,7 @@ function updateOptionalSections() {
 }
 
 function buildReportText() {
+  const company = currentCompanyName();
   const projectName = fallback(valueOf("projectName"), "__________");
   const reportDate = formatDateChinese(valueOf("reportDate"));
   const manager = fallback(valueOf("manager"), "______");
@@ -525,7 +543,7 @@ function buildReportText() {
   const sep = "━━━━━━━━━━━━";
 
   const lines = [
-    "【新熙华｜今日施工简报】",
+    `【${company}｜今日施工简报】`,
     "",
     `项目名称：${projectName}`,
     `日期：${reportDate}`,
@@ -700,6 +718,7 @@ function getReportData(photoItems = previewPhotoItems()) {
   const weeklyProgress = progressValue("weeklyProgress");
 
   return {
+    companyName: currentCompanyName(),
     projectName: fallback(valueOf("projectName"), "项目名称待填写"),
     reportDate: formatDateChinese(valueOf("reportDate")),
     manager: fallback(valueOf("manager"), "待填写"),
@@ -947,7 +966,7 @@ function buildDocumentMarkup(photoItems) {
   return `
     <article class="doc-page">
       <header class="doc-hero">
-        <p class="doc-brand">新熙华｜项目日进度汇报</p>
+        <p class="doc-brand">${escapeHtml(data.companyName)}｜项目日进度汇报</p>
         <h3>${escapeHtml(data.projectName)}</h3>
         <p class="doc-subtitle">${escapeHtml(data.reportDate)} · ${escapeHtml(data.stage)}</p>
         <div class="doc-status">
@@ -1142,6 +1161,7 @@ function updateQuality() {
 }
 
 function updateReport() {
+  updatePageBranding();
   const text = buildReportText();
   reportPreview.textContent = text;
   reportOutput.value = text;
@@ -1249,11 +1269,12 @@ async function copyReport() {
 function downloadReport() {
   const project = valueOf("projectName") || "施工日报";
   const date = valueOf("reportDate") || todayInputValue();
+  const company = currentCompanyName();
   const blob = new Blob([reportOutput.value], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${project}-${date}-微信日报.txt`;
+  link.download = `${safeFileName(project)}-${safeFileName(date)}-${safeFileName(company)}微信日报.txt`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -1294,9 +1315,10 @@ function safeFileName(value) {
 }
 
 function exportBaseName() {
+  const company = safeFileName(currentCompanyName());
   const project = safeFileName(valueOf("projectName") || "施工日报");
   const date = safeFileName(valueOf("reportDate") || todayInputValue());
-  return `${project}-${date}-新熙华施工日报`;
+  return `${project}-${date}-${company}施工日报`;
 }
 
 function downloadBlob(blob, fileName) {
@@ -1480,7 +1502,7 @@ function drawCanvasHeader(state, data) {
   context.fillStyle = gradient;
   context.fillRect(0, 0, CANVAS_WIDTH, height);
 
-  drawCanvasText(state, "新熙华｜项目日进度汇报", CANVAS_MARGIN, 38, CANVAS_WIDTH - CANVAS_MARGIN * 2, {
+  drawCanvasText(state, `${data.companyName}｜项目日进度汇报`, CANVAS_MARGIN, 38, CANVAS_WIDTH - CANVAS_MARGIN * 2, {
     size: 22,
     weight: 800,
     color: "#d7ebe7",
@@ -2069,6 +2091,7 @@ async function exportPdf() {
 async function exportDocument() {
   const project = valueOf("projectName") || "施工日报";
   const date = valueOf("reportDate") || todayInputValue();
+  const company = currentCompanyName();
   const exportButton = document.querySelector("#exportDocBtn");
   exportButton.disabled = true;
   exportButton.textContent = "生成中";
@@ -2080,7 +2103,7 @@ async function exportDocument() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(project)}｜新熙华施工日报</title>
+    <title>${escapeHtml(project)}｜${escapeHtml(company)}施工日报</title>
     <style>${standaloneDocumentCss()}</style>
   </head>
   <body>
@@ -2093,7 +2116,7 @@ async function exportDocument() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${project}-${date}-新熙华施工日报.html`;
+    link.download = `${safeFileName(project)}-${safeFileName(date)}-${safeFileName(company)}施工日报.html`;
     document.body.append(link);
     link.click();
     link.remove();

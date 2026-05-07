@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>新熙华施工日报生成器</title>
+    <title>施工日报生成器</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">新熙华</p>
+          <p class="eyebrow" id="appCompanyLabel">新熙华</p>
           <h1>今日施工简报生成器</h1>
         </div>
         <div class="top-actions">
@@ -28,6 +28,13 @@
                 <h2>基础信息</h2>
               </div>
               <div class="field-grid">
+                <label>
+                  公司名称
+                  <select id="companyName">
+                    <option>新熙华</option>
+                    <option>元本构筑</option>
+                  </select>
+                </label>
                 <label>
                   项目名称
                   <input id="projectName" type="text" placeholder="云栖谷1期15栋" />
